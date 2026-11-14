@@ -61,7 +61,7 @@ def format_time(seconds):
     return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
-def enhance_video(source, output_dir, upsampler, scale, tile_size):
+def enhance_video(source, output_dir, upsampler, scale, tile_size, face_restorer=None, progress_callback=None):
     import av
 
     check_ffmpeg()
@@ -108,7 +108,7 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                 aspect_ratio *= Fraction(image.width * dimensions[1], image.height * dimensions[0])
 
                 started = time.monotonic()
-                enhanced = enhance_pixels(image, upsampler, scale, tile_size, dimensions)
+                enhanced = enhance_pixels(image, upsampler, scale, tile_size, dimensions, face_restorer)
                 first_seconds = max(time.monotonic() - started, 0.001)
                 print(f"Очаквано време за обработка: около {format_time(first_seconds * count)} "
                       "(оценката е по първия кадър).", flush=True)
@@ -149,19 +149,23 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                     processed = 1
                     print(f"Кадър {processed}/{count} ({processed / count * 100:.1f}%), "
                           f"остават около {format_time(first_seconds * (count - processed))}", flush=True)
+                    if progress_callback:
+                        progress_callback(processed, count)
                     for frame in frames:
                         if (frame.width, frame.height) != (first.width, first.height):
                             raise ValueError("Променливият размер на кадрите не се поддържа.")
                         image = frame.to_image()
                         if rotation:
                             image = image.rotate(rotation, expand=True)
-                        result = enhance_pixels(image, upsampler, scale, tile_size, dimensions)
+                        result = enhance_pixels(image, upsampler, scale, tile_size, dimensions, face_restorer)
                         write_frame(frame, result)
                         processed += 1
                         elapsed = time.monotonic() - started
                         remaining = elapsed / processed * max(count - processed, 0)
                         print(f"Кадър {processed}/{count} ({processed / count * 100:.1f}%), "
                               f"остават около {format_time(remaining)}", flush=True)
+                        if progress_callback:
+                            progress_callback(processed, count)
                     if processed != count:
                         raise ValueError(f"Прочетени са {processed} от {count} кадъра; проверете видео файла.")
                     mux_packets(stream.encode())

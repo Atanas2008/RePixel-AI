@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from core.image import SUPPORTED_EXTENSIONS, enhance_image
-from core.models import MODEL_URLS, create_upsampler
+from core.models import MODEL_URLS, create_face_restorer, create_upsampler
 from core.video import SUPPORTED_VIDEO_EXTENSIONS, check_ffmpeg, enhance_video
 
 
@@ -20,6 +20,7 @@ def main(argv=None):
     parser.add_argument("--scale", type=int, choices=(2, 4), default=4, help="Увеличение: 2 или 4")
     parser.add_argument("--model", choices=MODEL_URLS, default="RealESRGAN_x4plus", help="AI модел")
     parser.add_argument("--tile", type=positive_int, default=256, help="Размер на блоковете (по подразбиране: 256)")
+    parser.add_argument("--faces", action="store_true", help="Възстановяване на лица с GFPGAN")
     args = parser.parse_args(argv)
 
     if args.input.is_dir():
@@ -40,12 +41,16 @@ def main(argv=None):
         if all(path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS for path in files):
             check_ffmpeg()
         upsampler = create_upsampler(args.model, device)
+        face_restorer = create_face_restorer(device) if args.faces else None
         failed = False
         for path in files:
             try:
                 print(f"Обработка: {path}")
                 process = enhance_video if path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS else enhance_image
-                destination = process(path, Path("output"), upsampler, args.scale, args.tile)
+                if face_restorer:
+                    destination = process(path, Path("output"), upsampler, args.scale, args.tile, face_restorer=face_restorer)
+                else:
+                    destination = process(path, Path("output"), upsampler, args.scale, args.tile)
                 print(f"Запазено: {destination}")
             except Exception as error:
                 failed = True

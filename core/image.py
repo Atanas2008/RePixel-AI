@@ -10,7 +10,7 @@ def output_dimensions(width, height, scale):
     return max(1, int(width * factor)), max(1, int(height * factor))
 
 
-def enhance_pixels(image, upsampler, scale, tile_size, dimensions=None):
+def enhance_pixels(image, upsampler, scale, tile_size, dimensions=None, face_restorer=None):
     import cv2
     import numpy as np
     from PIL import Image
@@ -32,16 +32,46 @@ def enhance_pixels(image, upsampler, scale, tile_size, dimensions=None):
                    right * out_width // width, bottom * out_height // height)
             if box[2] > box[0] and box[3] > box[1]:
                 result.paste(enhanced.resize((box[2] - box[0], box[3] - box[1]), Image.Resampling.LANCZOS), box)
+    if face_restorer is not None:
+        result = restore_faces(image, result, face_restorer)
     return result
 
 
-def enhance_image(source, output_dir, upsampler, scale, tile_size):
+def restore_faces(image, background, restorer):
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    proxy = image.convert("RGB")
+    proxy.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+    original = cv2.cvtColor(np.asarray(proxy), cv2.COLOR_RGB2BGR)
+    background_bgr = cv2.cvtColor(np.asarray(background.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+    class Background:
+        def enhance(self, _image, outscale):
+            return background_bgr, None
+
+    restorer.upscale = background.width / proxy.width
+    restorer.face_helper.set_upscale_factor(restorer.upscale)
+    restorer.bg_upsampler = Background()
+    try:
+        _, _, restored = restorer.enhance(original, has_aligned=False, only_center_face=False, paste_back=True)
+    finally:
+        restorer.bg_upsampler = None
+    restored = cv2.resize(restored, background.size, interpolation=cv2.INTER_LANCZOS4)
+    result = Image.fromarray(cv2.cvtColor(restored, cv2.COLOR_BGR2RGB))
+    if background.mode == "RGBA":
+        result.putalpha(background.getchannel("A"))
+    return result
+
+
+def enhance_image(source, output_dir, upsampler, scale, tile_size, face_restorer=None):
     from PIL import Image, ImageOps
 
     with Image.open(source) as opened:
         image = ImageOps.exif_transpose(opened)
         image = image.convert("RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB")
-    result = enhance_pixels(image, upsampler, scale, tile_size)
+    result = enhance_pixels(image, upsampler, scale, tile_size, face_restorer=face_restorer)
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
