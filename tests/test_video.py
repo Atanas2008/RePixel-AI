@@ -9,7 +9,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import cv2
+import numpy as np
+from PIL import Image
 
+import enhance
 from core.video import check_ffmpeg, enhance_video
 
 
@@ -51,6 +54,10 @@ class VideoTests(unittest.TestCase):
         data = ffprobe(path, ["-select_streams", "a:0", "-show_entries", "stream=start_time"])
         return float(data["streams"][0]["start_time"])
 
+    def last_frame_duration(self, path):
+        data = ffprobe(path, ["-select_streams", "v:0", "-show_entries", "frame=duration_time", "-show_frames"])
+        return float(data["frames"][-1]["duration_time"])
+
     def test_vfr_audio_and_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -70,6 +77,7 @@ class VideoTests(unittest.TestCase):
             self.assertGreater(times_in[-1] - times_in[-2], times_in[1] - times_in[0])
             for before, after in zip(times_in, times_out):
                 self.assertAlmostEqual(before - times_in[0], after - times_out[0], delta=0.001)
+            self.assertAlmostEqual(self.last_frame_duration(source), self.last_frame_duration(result), delta=0.001)
             self.assertAlmostEqual(self.audio_start(source) - times_in[0],
                                    self.audio_start(result) - times_out[0], delta=0.025)
             info = ffprobe(result, ["-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height"])
@@ -107,6 +115,48 @@ class VideoTests(unittest.TestCase):
             self.assertAlmostEqual(source_offset, result_offset, delta=0.025)
             audio = ffprobe(result, ["-select_streams", "a:0", "-show_entries", "stream=codec_name"])
             self.assertEqual(audio["streams"][0]["codec_name"], "aac")
+
+    def test_batch_continues_when_ffmpeg_is_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new("RGB", (4, 4), "red").save(root / "photo.png")
+            (root / "video.mp4").write_bytes(b"video")
+            device = type("Device", (), {"type": "cpu", "__str__": lambda self: "cpu"})()
+            with patch("core.device.select_device", return_value=device), \
+                 patch("enhance.create_upsampler", return_value=FakeUpsampler()), \
+                 patch("enhance.Path", side_effect=lambda p: root / p), \
+                 patch("core.video.check_ffmpeg", side_effect=RuntimeError("FFmpeg missing")), \
+                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(enhance.main([str(root), "--scale", "2"]), 1)
+            self.assertTrue((root / "output" / "photo_enhanced.png").is_file())
+
+    def test_phone_rotation_matches_ffmpeg(self):
+        help_text = subprocess.run(["ffmpeg", "-hide_banner", "-h", "full"], capture_output=True, text=True).stdout
+        if "-display_rotation" not in help_text:
+            self.skipTest("FFmpeg cannot set display rotation for a test input")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.mp4"
+            rotated = root / "rotated.mp4"
+            self.make_video(source, with_audio=False)
+            subprocess.run([
+                "ffmpeg", "-v", "error", "-display_rotation", "90", "-i", str(source),
+                "-c", "copy", "-y", str(rotated),
+            ], check=True, capture_output=True)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = enhance_video(rotated, root / "output", FakeUpsampler(), 2, 16)
+
+            def pixels(path, resize=False):
+                command = ["ffmpeg", "-v", "error", "-i", str(path), "-frames:v", "1"]
+                if resize:
+                    command += ["-vf", "scale=48:64"]
+                command += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+                raw = subprocess.run(command, check=True, capture_output=True).stdout
+                return np.frombuffer(raw, dtype=np.uint8).astype(np.int16)
+
+            expected, actual = pixels(rotated, True), pixels(result)
+            self.assertEqual(len(expected), len(actual))
+            self.assertLess(np.abs(expected - actual).mean(), 25)
 
 
 class MissingFFmpegTests(unittest.TestCase):

@@ -117,6 +117,14 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                     stream.codec_context.time_base = VIDEO_TIME_BASE
                     stream.options = {"crf": "18", "bf": "0"}
                     previous_pts = None
+                    durations = {}
+
+                    def mux_packets(packets):
+                        for packet in packets:
+                            duration = durations.pop(packet.pts * packet.time_base, None)
+                            if duration:
+                                packet.duration = max(1, round(duration / packet.time_base))
+                            output_file.mux(packet)
 
                     def write_frame(frame, result):
                         nonlocal previous_pts
@@ -126,11 +134,11 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                         if previous_pts is not None and pts <= previous_pts:
                             raise ValueError("Времевите отметки на кадрите не нарастват; поправете видео файла с FFmpeg.")
                         previous_pts = pts
+                        durations[pts * VIDEO_TIME_BASE] = frame.duration * frame.time_base if frame.duration else None
                         new_frame = av.VideoFrame.from_image(result)
                         new_frame.pts = pts
                         new_frame.time_base = VIDEO_TIME_BASE
-                        for packet in stream.encode(new_frame):
-                            output_file.mux(packet)
+                        mux_packets(stream.encode(new_frame))
 
                     write_frame(first, enhanced)
                     processed = 1
@@ -151,8 +159,7 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                               f"остават около {format_time(remaining)}", flush=True)
                     if processed != count:
                         raise ValueError(f"Прочетени са {processed} от {count} кадъра; проверете видео файла.")
-                    for packet in stream.encode():
-                        output_file.mux(packet)
+                    mux_packets(stream.encode())
                 audio_codecs = [s.codec_context.name for s in input_file.streams.audio]
 
             audio_codec = "copy" if all(c in {"aac", "mp3", "alac", "ac3", "eac3"} for c in audio_codecs) else "aac"

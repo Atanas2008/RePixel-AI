@@ -37,7 +37,7 @@ def main(argv=None):
         print(f"Устройство: {device}")
         if device.type == "cpu":
             print("За AMD/Intel GPU разгледайте realesrgan-ncnn-vulkan; този проект използва CPU.")
-        if any(path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS for path in files):
+        if all(path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS for path in files):
             check_ffmpeg()
         upsampler = create_upsampler(args.model, device)
         failed = False
