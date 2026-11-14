@@ -47,7 +47,7 @@ def enhance_image(source, output_dir, upsampler, scale, tile_size):
     index = 0
     while True:
         extra = f"_{index}" if index else ""
-        destination = output_dir / f"{source.stem}_enhanced{extra}{suffix}"
+        destination = output_dir / f"{source.stem}{extra}_enhanced{suffix}"
         try:
             with destination.open("xb") as file:
                 try:

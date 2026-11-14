@@ -40,7 +40,7 @@ class ImageTests(unittest.TestCase):
             first = enhance_image(source, root, upsampler, 2, 5)
             second = enhance_image(source, root, upsampler, 2, 5)
             self.assertEqual(first.name, "photo_enhanced.png")
-            self.assertEqual(second.name, "photo_enhanced_1.png")
+            self.assertEqual(second.name, "photo_1_enhanced.png")
             self.assertEqual(source.read_bytes(), before)
             with Image.open(first) as result:
                 self.assertEqual(result.size, (38, 26))
