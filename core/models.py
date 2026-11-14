@@ -18,15 +18,19 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
 
 
 def download_weights(name):
+    urls = MODEL_URLS | FACE_MODEL_URLS
+    if name not in urls:
+        raise ValueError("Непознат AI модел.")
+    url = urls[name]
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    target = MODEL_DIR / f"{name}.pth"
+    target = MODEL_DIR / url.rsplit("/", 1)[-1]
     if target.is_file():
         return target
     print(f"Изтегляне на модела {name}...")
     fd, temporary = tempfile.mkstemp(dir=MODEL_DIR, suffix=".download")
     os.close(fd)
     try:
-        urllib.request.urlretrieve((MODEL_URLS | FACE_MODEL_URLS)[name], temporary)
+        urllib.request.urlretrieve(url, temporary)
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):

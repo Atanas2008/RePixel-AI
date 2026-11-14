@@ -1,4 +1,5 @@
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -80,9 +81,11 @@ class AppTests(unittest.TestCase):
             env = dict(os.environ, TMPDIR=directory, GRADIO_SERVER_PORT=str(port))
             process = subprocess.Popen(
                 [sys.executable, str(app.ROOT / "app.py")], env=env, cwd=app.ROOT,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             try:
+                process.stdin.write((secrets.token_urlsafe(12) + "\n").encode())
+                process.stdin.flush()
                 url = f"http://127.0.0.1:{port}/gradio_api/file={app.ROOT / 'README.md'}"
                 for _ in range(100):
                     try:
@@ -109,6 +112,7 @@ class AppTests(unittest.TestCase):
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
+                process.stdin.close()
             self.assertFalse(list(Path(directory).glob("repixel-gradio-*")))
 
 

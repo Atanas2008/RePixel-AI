@@ -1,5 +1,5 @@
+import getpass
 import os
-import secrets
 import tempfile
 from pathlib import Path
 
@@ -111,8 +111,10 @@ def build_app():
 if __name__ == "__main__":
     try:
         (ROOT / "output").mkdir(exist_ok=True)
-        password = secrets.token_urlsafe(12)
-        print(f"Потребител: repixel\nКод за достъп: {password}", flush=True)
+        print("Потребител: repixel", flush=True)
+        password = getpass.getpass("Изберете код за достъп (поне 8 знака): ")
+        if len(password) < 8:
+            raise ValueError("Кодът трябва да е поне 8 знака. Стартирайте програмата отново.")
         build_app().queue(default_concurrency_limit=1, api_open=False).launch(
             server_name="127.0.0.1", inbrowser=True, allowed_paths=[str(ROOT / "output")], show_error=True,
             footer_links=[], auth=("repixel", password),

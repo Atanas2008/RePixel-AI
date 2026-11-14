@@ -11,6 +11,7 @@ from PIL import Image
 
 import enhance
 from core.image import enhance_pixels
+from core.models import download_weights
 
 
 class FakeUpsampler:
@@ -38,6 +39,10 @@ class FakeRestorer:
 
 
 class FaceTests(unittest.TestCase):
+    def test_unknown_model_name_is_rejected(self):
+        with self.assertRaises(ValueError):
+            download_weights("../unexpected")
+
     def test_faces_use_bounded_proxy_and_keep_alpha(self):
         image = Image.new("RGBA", (1400, 20), (10, 20, 30, 80))
         restorer = FakeRestorer()
