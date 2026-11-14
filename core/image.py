@@ -10,17 +10,13 @@ def output_dimensions(width, height, scale):
     return max(1, int(width * factor)), max(1, int(height * factor))
 
 
-def enhance_image(source, output_dir, upsampler, scale, tile_size):
+def enhance_pixels(image, upsampler, scale, tile_size, dimensions=None):
     import cv2
     import numpy as np
-    from PIL import Image, ImageOps
-
-    with Image.open(source) as opened:
-        image = ImageOps.exif_transpose(opened)
-        image = image.convert("RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB")
+    from PIL import Image
 
     width, height = image.size
-    out_width, out_height = output_dimensions(width, height, scale)
+    out_width, out_height = dimensions or output_dimensions(width, height, scale)
     result = Image.new(image.mode, (out_width, out_height))
     for top in range(0, height, tile_size):
         for left in range(0, width, tile_size):
@@ -36,6 +32,16 @@ def enhance_image(source, output_dir, upsampler, scale, tile_size):
                    right * out_width // width, bottom * out_height // height)
             if box[2] > box[0] and box[3] > box[1]:
                 result.paste(enhanced.resize((box[2] - box[0], box[3] - box[1]), Image.Resampling.LANCZOS), box)
+    return result
+
+
+def enhance_image(source, output_dir, upsampler, scale, tile_size):
+    from PIL import Image, ImageOps
+
+    with Image.open(source) as opened:
+        image = ImageOps.exif_transpose(opened)
+        image = image.convert("RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB")
+    result = enhance_pixels(image, upsampler, scale, tile_size)
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
