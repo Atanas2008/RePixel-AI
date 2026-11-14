@@ -98,6 +98,23 @@ class VideoTests(unittest.TestCase):
                 result = enhance_video(source, output, FakeUpsampler(), 2, 16)
             self.assertEqual(ffprobe(result, ["-select_streams", "a", "-show_entries", "stream=index"])["streams"], [])
 
+    def test_face_restorer_is_used_for_each_frame(self):
+        from test_faces import FakeRestorer
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.mp4"
+            self.make_video(source, with_audio=False)
+            restorer = FakeRestorer()
+            progress = []
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = enhance_video(source, root / "output", FakeUpsampler(), 2, 16,
+                                       face_restorer=restorer,
+                                       progress_callback=lambda frame, total: progress.append((frame, total)))
+            self.assertEqual(len(restorer.images), len(self.frame_times(source)))
+            self.assertEqual(progress[-1], (10, 10))
+            self.assertEqual(len(self.frame_times(source)), len(self.frame_times(result)))
+
     def test_audio_starts_before_video_and_is_transcoded_when_needed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
