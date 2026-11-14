@@ -102,6 +102,10 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                 if rotation:
                     image = image.rotate(rotation, expand=True)
                 dimensions = even_dimensions(image.width, image.height, scale)
+                aspect_ratio = input_stream.sample_aspect_ratio or Fraction(1, 1)
+                if rotation in (90, 270):
+                    aspect_ratio = 1 / aspect_ratio
+                aspect_ratio *= Fraction(image.width * dimensions[1], image.height * dimensions[0])
 
                 started = time.monotonic()
                 enhanced = enhance_pixels(image, upsampler, scale, tile_size, dimensions)
@@ -113,6 +117,7 @@ def enhance_video(source, output_dir, upsampler, scale, tile_size):
                     stream = output_file.add_stream("libx264", rate=rate)
                     stream.width, stream.height = dimensions
                     stream.pix_fmt = "yuv420p"
+                    stream.codec_context.sample_aspect_ratio = aspect_ratio
                     stream.time_base = VIDEO_TIME_BASE
                     stream.codec_context.time_base = VIDEO_TIME_BASE
                     stream.options = {"crf": "18", "bf": "0"}

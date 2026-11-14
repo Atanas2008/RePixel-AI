@@ -158,6 +158,21 @@ class VideoTests(unittest.TestCase):
             self.assertEqual(len(expected), len(actual))
             self.assertLess(np.abs(expected - actual).mean(), 25)
 
+    def test_non_square_pixels_preserve_display_aspect_ratio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "anamorphic.mp4"
+            subprocess.run([
+                "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=32x24:rate=5:duration=1",
+                "-vf", "setsar=16/15", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", str(source),
+            ], check=True, capture_output=True)
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = enhance_video(source, root / "output", FakeUpsampler(), 2, 16)
+            args = ["-select_streams", "v:0", "-show_entries", "stream=display_aspect_ratio"]
+            original = ffprobe(source, args)["streams"][0]["display_aspect_ratio"]
+            output = ffprobe(result, args)["streams"][0]["display_aspect_ratio"]
+            self.assertEqual(original, output)
+
 
 class MissingFFmpegTests(unittest.TestCase):
     def test_missing_ffmpeg_has_install_guidance(self):
