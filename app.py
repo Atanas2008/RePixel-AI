@@ -1,7 +1,12 @@
 import os
+import secrets
+import tempfile
 from pathlib import Path
 
-os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
+os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
+if __name__ == "__main__":
+    cache = tempfile.TemporaryDirectory(prefix="repixel-gradio-")
+    os.environ["GRADIO_TEMP_DIR"] = cache.name
 
 import gradio as gr
 
@@ -104,8 +109,14 @@ def build_app():
 
 
 if __name__ == "__main__":
-    (ROOT / "output").mkdir(exist_ok=True)
-    build_app().queue(default_concurrency_limit=1).launch(
-        server_name="127.0.0.1", inbrowser=True, allowed_paths=[str(ROOT / "output")], show_error=True,
-        footer_links=[],
-    )
+    try:
+        (ROOT / "output").mkdir(exist_ok=True)
+        password = secrets.token_urlsafe(12)
+        print(f"Потребител: repixel\nКод за достъп: {password}", flush=True)
+        build_app().queue(default_concurrency_limit=1, api_open=False).launch(
+            server_name="127.0.0.1", inbrowser=True, allowed_paths=[str(ROOT / "output")], show_error=True,
+            footer_links=[], auth=("repixel", password),
+            auth_message="Username: потребител; Password: код за достъп от терминала; Login: вход.",
+        )
+    finally:
+        cache.cleanup()

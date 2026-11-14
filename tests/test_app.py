@@ -1,5 +1,13 @@
+import os
+import signal
+import socket
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -62,6 +70,46 @@ class AppTests(unittest.TestCase):
 
     def test_build_app(self):
         self.assertIsInstance(app.build_app(), gr.Blocks)
+
+    @unittest.skipIf(os.name == "nt", "SIGINT behavior differs on Windows")
+    def test_local_server_requires_login_and_cleans_private_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with socket.socket() as sock:
+                sock.bind(("127.0.0.1", 0))
+                port = sock.getsockname()[1]
+            env = dict(os.environ, TMPDIR=directory, GRADIO_SERVER_PORT=str(port))
+            process = subprocess.Popen(
+                [sys.executable, str(app.ROOT / "app.py")], env=env, cwd=app.ROOT,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            try:
+                url = f"http://127.0.0.1:{port}/gradio_api/file={app.ROOT / 'README.md'}"
+                for _ in range(100):
+                    try:
+                        urllib.request.urlopen(url, timeout=1)
+                    except urllib.error.HTTPError as error:
+                        self.assertEqual(error.code, 401)
+                        break
+                    except urllib.error.URLError:
+                        if process.poll() is not None:
+                            self.fail("GUI server exited before starting")
+                        time.sleep(0.1)
+                    else:
+                        self.fail("Anonymous file access was allowed")
+                else:
+                    self.fail("GUI server did not start")
+                caches = list(Path(directory).glob("repixel-gradio-*"))
+                self.assertEqual(len(caches), 1)
+                self.assertEqual(caches[0].stat().st_mode & 0o777, 0o700)
+            finally:
+                if process.poll() is None:
+                    process.send_signal(signal.SIGINT)
+                    try:
+                        process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+            self.assertFalse(list(Path(directory).glob("repixel-gradio-*")))
 
 
 if __name__ == "__main__":
